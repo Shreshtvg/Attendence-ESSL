@@ -1,0 +1,6 @@
+{
+  "name": "Attendix ERP",
+  "description": "A modernized, enterprise-grade Attendance Management ERP built with Node.js, Express, SQLite3, and React.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
