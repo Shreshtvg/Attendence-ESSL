@@ -1,4 +1,4 @@
-# Attendix ERP — Attendance Management System
+# Attendence ESSL — Attendance Management System
 
 A full-stack attendance and workforce management system built with React, Express, and SQLite.
 
