@@ -13,10 +13,19 @@ import {
 } from 'lucide-react';
 import apiClient from '../api/client';
 import Modal from '../components/Modal';
+import ConfirmDialog from '../components/ConfirmDialog';
 import { useAuth } from '../contexts/AuthContext';
+import { useNotifications } from '../contexts/NotificationsContext';
+import { useToast } from '../contexts/ToastContext';
 
 export default function LeaveRequests() {
   const { user } = useAuth();
+  const { refresh: refreshNotifications } = useNotifications();
+  const toast = useToast();
+  const [confirmDialog, setConfirmDialog] = useState({ open: false, title: '', message: '', onConfirm: null });
+  const openConfirm = (title, message, onConfirm) => setConfirmDialog({ open: true, title, message, onConfirm });
+  const closeConfirm = () => setConfirmDialog(s => ({ ...s, open: false }));
+
   const [leaves, setLeaves] = useState([]);
   const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -98,11 +107,15 @@ export default function LeaveRequests() {
         loadAll();
       }
     } catch (err) {
-      alert(err.message || 'Error submitting leave request');
+      toast.error(err.message || 'Error submitting leave request');
     }
   };
 
   const handleOpenEdit = (l) => {
+    if (l.status !== 'Pending') {
+      toast.info(`This leave is already ${l.status} and cannot be edited.`);
+      return;
+    }
     setEditingLeave(l);
     setEditStatus(l.status || 'Pending');
     setEditLeaveType(l.leave_type || 'Casual');
@@ -126,22 +139,26 @@ export default function LeaveRequests() {
         setEditModalOpen(false);
         setEditingLeave(null);
         loadAll();
+        refreshNotifications();
       }
     } catch (err) {
-      alert(err.message || 'Failed to update leave request');
+      toast.error(err.message || 'Failed to update leave request');
     }
   };
 
-  const handleDelete = async (id) => {
-    if (!window.confirm('Are you absolutely sure you want to delete this leave request permanently?')) return;
-    try {
-      const res = await apiClient.delete(`/leaves/${id}`);
-      if (res.success) {
-        loadAll();
+  const handleDelete = (id) => {
+    openConfirm(
+      'Delete Leave Request',
+      'This action is permanent and cannot be undone.',
+      async () => {
+        try {
+          const res = await apiClient.delete(`/leaves/${id}`);
+          if (res.success) loadAll();
+        } catch (err) {
+          toast.error(err.message || 'Failed to delete leave request');
+        }
       }
-    } catch (err) {
-      alert(err.message || 'Failed to delete leave request');
-    }
+    );
   };
 
   // Convert "2026-04-06" to "06 Apr 2026"
@@ -272,8 +289,12 @@ export default function LeaveRequests() {
                             <button
                               id={`edit-leave-${l.id}`}
                               onClick={() => handleOpenEdit(l)}
-                              className="p-1.5 bg-[#eaf4fc] text-[#4ea0e6] hover:bg-[#d8eafb] rounded-lg cursor-pointer transition-colors"
-                              title="Edit/Approve Leave"
+                              className={`p-1.5 rounded-lg transition-colors ${
+                                l.status === 'Pending'
+                                  ? 'bg-[#eaf4fc] text-[#4ea0e6] hover:bg-[#d8eafb] cursor-pointer'
+                                  : 'bg-slate-100 text-slate-300 cursor-not-allowed'
+                              }`}
+                              title={l.status === 'Pending' ? 'Edit / Approve Leave' : `Already ${l.status}`}
                             >
                               <Pencil className="h-3.5 w-3.5" />
                             </button>
@@ -359,7 +380,10 @@ export default function LeaveRequests() {
                   <input
                     type="date"
                     value={editStartDate}
-                    onChange={(e) => setEditStartDate(e.target.value)}
+                    onChange={(e) => {
+                      setEditStartDate(e.target.value);
+                      if (editEndDate < e.target.value) setEditEndDate(e.target.value);
+                    }}
                     className="w-full border border-slate-200 outline-none rounded-xl px-3 py-2 text-xs text-slate-700 bg-slate-50 focus:bg-white transition-all font-mono"
                     required
                   />
@@ -369,6 +393,7 @@ export default function LeaveRequests() {
                   <input
                     type="date"
                     value={editEndDate}
+                    min={editStartDate}
                     onChange={(e) => setEditEndDate(e.target.value)}
                     className="w-full border border-slate-200 outline-none rounded-xl px-3 py-2 text-xs text-slate-700 bg-slate-50 focus:bg-white transition-all font-mono"
                     required
@@ -430,7 +455,10 @@ export default function LeaveRequests() {
               <input
                 type="date"
                 value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
+                onChange={(e) => {
+                  setStartDate(e.target.value);
+                  if (endDate < e.target.value) setEndDate(e.target.value);
+                }}
                 className="w-full border border-slate-200 outline-none rounded-xl px-3 py-2 text-xs text-slate-700 bg-slate-50 focus:bg-white transition-all font-mono"
                 required
               />
@@ -440,8 +468,9 @@ export default function LeaveRequests() {
               <input
                 type="date"
                 value={endDate}
+                min={startDate}
                 onChange={(e) => setEndDate(e.target.value)}
-                className="w-full border border-slate-200 outline-none rounded-xl px-3 py-2 text-xs text-slate-100 bg-slate-50 focus:bg-white border-slate-200 text-slate-700 transition-all font-mono"
+                className="w-full border border-slate-200 outline-none rounded-xl px-3 py-2 text-xs text-slate-700 bg-slate-50 focus:bg-white transition-all font-mono"
                 required
               />
             </div>
@@ -491,6 +520,14 @@ export default function LeaveRequests() {
           </div>
         </form>
       </Modal>
+
+      <ConfirmDialog
+        isOpen={confirmDialog.open}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        onConfirm={() => { confirmDialog.onConfirm?.(); closeConfirm(); }}
+        onCancel={closeConfirm}
+      />
     </div>
   );
 }

@@ -23,18 +23,20 @@ export const attendanceChangeService = {
     const updated = attendanceChangeRepository.updateStatus(id, status, userId);
     activityLogRepository.log(`Attendance correction #${id} was ${status} by user #${userId}`, 'Info', userId);
 
-    // If approved, update the actual attendance row
+    // If approved, write the requested status to the actual attendance row
     if (status === 'Approved') {
-      const hours = calculateHours(original.requested_check_in, original.requested_check_out);
+      const requestedStatus = original.requested_status || 'Present';
+      const isPresent = requestedStatus === 'Present';
+      const hours = isPresent ? calculateHours(original.requested_check_in, original.requested_check_out) : 0;
       attendanceRepository.save({
         employee_id: original.employee_id,
         attendance_date: original.attendance_date,
-        check_in: original.requested_check_in,
-        check_out: original.requested_check_out,
+        check_in: isPresent ? original.requested_check_in : null,
+        check_out: isPresent ? original.requested_check_out : null,
         hours,
-        status: 'Present' // Marked as Present if we have corrected times
+        status: requestedStatus
       });
-      activityLogRepository.log(`Attendance logs automatically updated for employee ID ${original.employee_id} on ${original.attendance_date} with corrected times`, 'Info', userId);
+      activityLogRepository.log(`Attendance updated for employee ID ${original.employee_id} on ${original.attendance_date} → ${requestedStatus}`, 'Info', userId);
     }
 
     return updated;

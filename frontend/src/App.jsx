@@ -1,5 +1,7 @@
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { NotificationsProvider } from './contexts/NotificationsContext';
+import { ToastProvider } from './contexts/ToastContext';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 // LAyout
@@ -53,6 +55,8 @@ export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
+        <ToastProvider>
+        <NotificationsProvider>
         <HashRouter>
           <Routes>
             {/* LOGIN ACCESS */}
@@ -77,6 +81,8 @@ export default function App() {
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </HashRouter>
+        </NotificationsProvider>
+        </ToastProvider>
       </AuthProvider>
     </QueryClientProvider>
   );

@@ -16,12 +16,16 @@ export const attendanceChangeRepository = {
   },
 
   create(req) {
-    const { employee_id, attendance_id, attendance_date, requested_check_in, requested_check_out, reason, status } = req;
+    const { employee_id, attendance_id, attendance_date, requested_check_in, requested_check_out, requested_status, reason } = req;
     const stmt = db.prepare(`
-      INSERT INTO attendance_changes (employee_id, attendance_id, attendance_date, requested_check_in, requested_check_out, reason, status)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO attendance_changes (employee_id, attendance_id, attendance_date, requested_check_in, requested_check_out, requested_status, reason, status)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 'Pending')
     `);
-    const info = stmt.run(employee_id, attendance_id, attendance_date, requested_check_in, requested_check_out, reason, status || 'Pending');
+    const info = stmt.run(
+      employee_id, attendance_id ?? null, attendance_date,
+      requested_check_in ?? null, requested_check_out ?? null,
+      requested_status || 'Present', reason || null
+    );
     return { id: info.lastInsertRowid, ...req };
   },
 

@@ -3,9 +3,11 @@ import { Plus, Edit2, Trash2, HelpCircle } from 'lucide-react';
 import apiClient from '../api/client';
 import Modal from '../components/Modal';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../contexts/ToastContext';
 
 export default function Shifts() {
   const { user } = useAuth();
+  const toast = useToast();
   const [shifts, setShifts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -83,7 +85,7 @@ export default function Shifts() {
         loadShifts();
       }
     } catch (err) {
-      alert(err.message || 'Operation failed');
+      toast.error(err.message || 'Operation failed');
     }
   };
 
@@ -100,7 +102,7 @@ export default function Shifts() {
         loadShifts();
       }
     } catch (err) {
-      alert(err.message || 'Delete operation failed');
+      toast.error(err.message || 'Delete operation failed');
     }
   };
 

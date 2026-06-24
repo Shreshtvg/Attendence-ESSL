@@ -2,10 +2,17 @@ import { useState, useEffect } from 'react';
 import { Plus, Edit2, Trash2, HelpCircle, Search } from 'lucide-react';
 import apiClient from '../api/client';
 import Modal from '../components/Modal';
+import ConfirmDialog from '../components/ConfirmDialog';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../contexts/ToastContext';
 
 export default function Designations() {
   const { user } = useAuth();
+  const toast = useToast();
+  const [confirmDialog, setConfirmDialog] = useState({ open: false, title: '', message: '', onConfirm: null });
+  const openConfirm = (title, message, onConfirm) => setConfirmDialog({ open: true, title, message, onConfirm });
+  const closeConfirm = () => setConfirmDialog(s => ({ ...s, open: false }));
+
   const [designations, setDesignations] = useState([]);
   const [departments, setDepartments] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -86,20 +93,23 @@ export default function Designations() {
         loadAll();
       }
     } catch (err) {
-      alert(err.message || 'Saving designation failed');
+      toast.error(err.message || 'Saving designation failed');
     }
   };
 
-  const handleDelete = async (id) => {
-    if (!window.confirm('Are you dynamic sure you want to delete this designation?')) return;
-    try {
-      const res = await apiClient.delete(`/designations/${id}`);
-      if (res.success) {
-        loadAll();
+  const handleDelete = (id) => {
+    openConfirm(
+      'Delete Designation',
+      'This will permanently remove the designation. This action cannot be undone.',
+      async () => {
+        try {
+          const res = await apiClient.delete(`/designations/${id}`);
+          if (res.success) loadAll();
+        } catch (err) {
+          toast.error(err.message || 'Delete operation failed');
+        }
       }
-    } catch (err) {
-      alert(err.message || 'Delete operation failed');
-    }
+    );
   };
 
   return (
@@ -282,6 +292,14 @@ export default function Designations() {
           </div>
         </form>
       </Modal>
+
+      <ConfirmDialog
+        isOpen={confirmDialog.open}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        onConfirm={() => { confirmDialog.onConfirm?.(); closeConfirm(); }}
+        onCancel={closeConfirm}
+      />
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { 
   Plus, 
   ChevronDown, 
@@ -15,15 +15,20 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import apiClient from '../api/client';
 import Modal from '../components/Modal';
-import MonthlyAttendanceReportPrint from '../components/MonthlyAttendanceReportPrint';
 import { exportToExcel } from '../utils/export';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../contexts/ToastContext';
 
 export default function Attendance() {
   const { user } = useAuth();
+  const toast = useToast();
   
-  const getTodayDateString = () => '2026-06-23';
-  const getYesterdayDateString = () => '2026-06-22';
+  const getTodayDateString = () => new Date().toISOString().split('T')[0];
+  const getYesterdayDateString = () => {
+    const d = new Date();
+    d.setDate(d.getDate() - 1);
+    return d.toISOString().split('T')[0];
+  };
 
   const [selectedDate, setSelectedDate] = useState(getTodayDateString());
   const [departments, setDepartments] = useState([]);
@@ -50,17 +55,8 @@ export default function Attendance() {
   const [editCheckIn, setEditCheckIn] = useState('');
   const [editCheckOut, setEditCheckOut] = useState('');
   const [editStatus, setEditStatus] = useState('Present');
-
-  // Monthly attendance report (printable) state
-  const [monthlyReport, setMonthlyReport] = useState(null);
-  const printRequestedRef = useRef(false);
-
-  useEffect(() => {
-    if (monthlyReport && printRequestedRef.current) {
-      printRequestedRef.current = false;
-      setTimeout(() => window.print(), 100);
-    }
-  }, [monthlyReport]);
+  const [editReason, setEditReason] = useState('');
+  const [editSubmitSuccess, setEditSubmitSuccess] = useState(false);
 
   // Sync Period with active Date
   useEffect(() => {
@@ -133,33 +129,51 @@ export default function Attendance() {
     setEditCheckIn(employee.checkIn || '09:00');
     setEditCheckOut(employee.checkOut || '18:00');
     setEditStatus(employee.status || 'Present');
+    setEditReason('');
+    setEditSubmitSuccess(false);
     setEditModalOpen(true);
   };
 
   const saveEdit = async (e) => {
     e.preventDefault();
     try {
-      const res = await apiClient.post('/attendance', {
-        employeeId: editingEmployee.employeeId,
-        attendanceDate: selectedDate,
-        checkIn: editStatus === 'Present' ? editCheckIn : null,
-        checkOut: editStatus === 'Present' ? editCheckOut : null,
-        status: editStatus
-      });
-
-      if (res.success) {
-        setEditModalOpen(false);
-        loadAttendance();
+      if (user?.role === 'Supervisor') {
+        // Supervisor saves directly — no change request needed
+        const res = await apiClient.post('/attendance', {
+          employeeId: editingEmployee.employeeId,
+          attendanceDate: selectedDate,
+          status: editStatus,
+          checkIn: editStatus === 'Present' ? editCheckIn : null,
+          checkOut: editStatus === 'Present' ? editCheckOut : null,
+        });
+        if (res.success) {
+          setEditSubmitSuccess(true);
+          loadAttendance();
+        }
+      } else {
+        // Admin submits a change request for Supervisor approval
+        const res = await apiClient.post('/attendance-changes', {
+          employee_id: editingEmployee.employeeId,
+          attendance_date: selectedDate,
+          attendance_id: editingEmployee.attendanceId || null,
+          requested_status: editStatus,
+          requested_check_in: editStatus === 'Present' ? editCheckIn : null,
+          requested_check_out: editStatus === 'Present' ? editCheckOut : null,
+          reason: editReason || 'Manual correction requested'
+        });
+        if (res.success) {
+          setEditSubmitSuccess(true);
+        }
       }
     } catch (err) {
-      alert(err.message || 'Failed to save attendance logs');
+      toast.error(err.message || 'Failed to save attendance');
     }
   };
 
   // Export dataset handler
   const triggerExcelExport = () => {
     if (!isFilterApplied) {
-      alert('No data available – please select a Branch, Department, or Shift filter to export data.');
+      toast.info('No data available — please select a filter first.');
       return;
     }
     const flatRows = [];
@@ -181,37 +195,104 @@ export default function Attendance() {
     exportToExcel(['Department', 'Employee Code', 'Employee Name', 'Designation', 'Branch', 'Check In', 'Check Out', 'Hours', 'Status'], flatRows, `attendance_report_${selectedDate}`);
   };
 
-  const triggerPdfExport = async () => {
+  const triggerPdfExport = () => {
     if (!isFilterApplied) {
-      alert('No data available – please select a Branch, Department, or Shift filter to export data.');
+      toast.info('No data available — please select a filter first.');
       return;
     }
-    try {
-      const [year, month] = selectedDate.split('-');
-      const params = new URLSearchParams({ year, month: String(Number(month)) });
-      if (filterBranch !== 'All') params.append('branch', filterBranch);
-      if (filterDept !== 'All') params.append('departmentId', filterDept);
-      if (filterShift !== 'All') params.append('shiftId', filterShift);
+    if (filteredDepartments.length === 0) {
+      toast.info('No data to export for the selected filters.');
+      return;
+    }
 
-      const res = await apiClient.get(`/reports/monthly-attendance?${params.toString()}`);
-      if (res.success) {
-        if (!res.data.departments || res.data.departments.length === 0) {
-          alert('No data available for the selected filters and month.');
-          return;
-        }
-        printRequestedRef.current = true;
-        setMonthlyReport(res.data);
-      } else {
-        alert(res.message || 'Failed to generate monthly attendance report');
-      }
-    } catch (err) {
-      alert(err.message || 'Error generating PDF report');
+    const filterParts = [];
+    if (filterBranch !== 'All') filterParts.push(`Branch: ${filterBranch}`);
+    if (filterDept !== 'All') {
+      const d = departments.find(dep => String(dep.id) === String(filterDept));
+      filterParts.push(`Dept: ${d ? d.name : filterDept}`);
+    }
+    if (filterShift !== 'All') {
+      const s = shifts.find(sh => String(sh.id) === String(filterShift));
+      filterParts.push(`Shift: ${s ? s.name : filterShift}`);
+    }
+    const filterLabel = filterParts.length > 0 ? filterParts.join(' | ') : 'All';
+
+    const { totalEmployees, present, absent, leave, weekOff, holiday } = sums;
+
+    const tableRows = filteredDepartments.flatMap(dept =>
+      dept.employees.map(emp => {
+        const statusClass = (emp.status || '').toLowerCase().replace(/\s+/g, '-');
+        return `<tr>
+          <td>${dept.departmentName}</td>
+          <td>${emp.employeeCode}</td>
+          <td>${emp.employeeName}</td>
+          <td>${emp.designation || ''}</td>
+          <td>${emp.branch || ''}</td>
+          <td>${emp.status === 'Present' ? (emp.checkIn || '-') : '-'}</td>
+          <td>${emp.status === 'Present' ? (emp.checkOut || '-') : '-'}</td>
+          <td>${emp.status === 'Present' ? (emp.hours || 0) : 0}</td>
+          <td class="s-${statusClass}">${emp.status}</td>
+        </tr>`;
+      })
+    ).join('');
+
+    const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Attendance Report &mdash; ${formatDateFriendly(selectedDate)}</title>
+  <style>
+    body { font-family: Arial, sans-serif; font-size: 11px; margin: 24px; color: #1e293b; }
+    h2 { font-size: 15px; margin: 0 0 4px; }
+    .meta { font-size: 10px; color: #64748b; margin-bottom: 8px; }
+    .summary { display: flex; gap: 18px; margin-bottom: 14px; font-size: 11px; font-weight: bold; }
+    table { width: 100%; border-collapse: collapse; }
+    th { background: #1e3a5f; color: #fff; padding: 6px 8px; text-align: left; font-size: 10px; white-space: nowrap; }
+    td { padding: 5px 8px; border-bottom: 1px solid #e2e8f0; font-size: 10px; }
+    tr:nth-child(even) td { background: #f8fafc; }
+    .s-present { color: #059669; font-weight: bold; }
+    .s-absent { color: #dc2626; font-weight: bold; }
+    .s-leave { color: #d97706; font-weight: bold; }
+    .s-holiday { color: #7c3aed; font-weight: bold; }
+    .s-week-off { color: #94a3b8; font-weight: bold; }
+    @media print { @page { margin: 1cm; size: landscape; } body { margin: 0; } }
+  </style>
+</head>
+<body>
+  <h2>Attendance Report</h2>
+  <p class="meta">Date: <strong>${formatDateFriendly(selectedDate)}</strong> &nbsp;&bull;&nbsp; Filter: ${filterLabel}</p>
+  <div class="summary">
+    <span>Total: ${totalEmployees}</span>
+    <span style="color:#059669">Present: ${present}</span>
+    <span style="color:#dc2626">Absent: ${absent}</span>
+    <span style="color:#d97706">Leave: ${leave}</span>
+    <span style="color:#94a3b8">Week Off: ${weekOff}</span>
+    <span style="color:#7c3aed">Holiday: ${holiday}</span>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>Department</th><th>Emp Code</th><th>Name</th><th>Designation</th><th>Branch</th>
+        <th>Check In</th><th>Check Out</th><th>Hours</th><th>Status</th>
+      </tr>
+    </thead>
+    <tbody>${tableRows}</tbody>
+  </table>
+</body>
+</html>`;
+
+    const pw = window.open('', '_blank', 'width=1050,height=700');
+    if (pw) {
+      pw.document.write(html);
+      pw.document.close();
+      pw.focus();
+      setTimeout(() => pw.print(), 400);
     }
   };
 
   const triggerVendorReportExport = async () => {
     if (!isFilterApplied) {
-      alert('No data available – please select a Branch, Department, or Shift filter to export data.');
+      toast.info('No data available — please select a filter first.');
       return;
     }
     try {
@@ -224,10 +305,10 @@ export default function Attendance() {
         }));
         exportToExcel(['Vendor Name', 'Employee Count', 'Total Hours Work'], flatRows, `vendor_report_${selectedDate}`);
       } else {
-        alert('Failed to load vendor report');
+        toast.error('Failed to load vendor report');
       }
     } catch (err) {
-      alert(err.message || 'Error exporting vendor report');
+      toast.error(err.message || 'Error exporting vendor report');
     }
   };
 
@@ -617,74 +698,123 @@ export default function Attendance() {
       )}
 
       {/* EDITABLE MODAL */}
-      <Modal id="edit-attendance-modal" isOpen={editModalOpen} onClose={() => setEditModalOpen(false)} title={`Modify Attendance log - [${editingEmployee?.employeeCode}]`}>
-        <form onSubmit={saveEdit} className="space-y-4 font-sans">
-          <div className="p-3 bg-blue-50 text-blue-800 rounded-xl text-xs space-y-1">
-            <p className="font-semibold block">Employee: {editingEmployee?.employeeName}</p>
-            <p>Target Date: <span className="font-mono font-bold">{selectedDate}</span></p>
-          </div>
-
-          <div className="space-y-1">
-            <label className="text-xs font-semibold text-slate-500">Mark Status</label>
-            <select
-              value={editStatus}
-              onChange={(e) => setEditStatus(e.target.value)}
-              className="w-full border border-slate-200 outline-none rounded-xl px-3 py-2 text-xs text-slate-700 bg-slate-50 focus:bg-white transition-all"
-            >
-              <option value="Present">Present</option>
-              <option value="Absent">Absent</option>
-              <option value="Leave">Leave</option>
-              <option value="Holiday">Holiday</option>
-              <option value="Week Off">Week Off</option>
-              <option value="Comp Off">Comp Off</option>
-            </select>
-          </div>
-
-          {editStatus === 'Present' && (
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-slate-550">Punch Check-In</label>
-                <input
-                  type="time"
-                  value={editCheckIn}
-                  onChange={(e) => setEditCheckIn(e.target.value)}
-                  className="w-full border border-slate-200 outline-none rounded-xl px-3 py-2 text-xs text-slate-700 bg-slate-50 focus:bg-white transition-all font-mono"
-                  required={editStatus === 'Present'}
-                />
+      <Modal id="edit-attendance-modal" isOpen={editModalOpen} onClose={() => { setEditModalOpen(false); setEditSubmitSuccess(false); }} title={user?.role === 'Supervisor' ? `Edit Attendance - [${editingEmployee?.employeeCode}]` : `Request Attendance Change - [${editingEmployee?.employeeCode}]`}>
+        {editSubmitSuccess ? (
+          <div className="space-y-4 font-sans text-center py-4">
+            <div className="flex flex-col items-center gap-3">
+              <div className="h-12 w-12 rounded-full bg-emerald-100 flex items-center justify-center">
+                <svg className="h-6 w-6 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
               </div>
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-slate-550">Punch Check-Out</label>
-                <input
-                  type="time"
-                  value={editCheckOut}
-                  onChange={(e) => setEditCheckOut(e.target.value)}
-                  className="w-full border border-slate-200 outline-none rounded-xl px-3 py-2 text-xs text-slate-700 bg-slate-50 focus:bg-white transition-all font-mono"
-                  required={editStatus === 'Present'}
-                />
-              </div>
+              {user?.role === 'Supervisor' ? (
+                <>
+                  <p className="text-sm font-bold text-slate-800">Attendance Updated</p>
+                  <p className="text-xs text-slate-500">The attendance record has been saved directly.</p>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm font-bold text-slate-800">Request Submitted</p>
+                  <p className="text-xs text-slate-500">The attendance change request has been sent for Supervisor approval.</p>
+                </>
+              )}
             </div>
-          )}
-
-          <div className="flex justify-end gap-3 pt-3 border-t border-slate-100">
             <button
-              onClick={() => setEditModalOpen(false)}
-              type="button"
-              className="px-4 py-2 border border-slate-200 text-slate-600 rounded-xl text-xs font-medium cursor-pointer"
+              onClick={() => { setEditModalOpen(false); setEditSubmitSuccess(false); }}
+              className="px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold cursor-pointer transition-colors"
             >
-              Cancel
-            </button>
-            <button
-              id="submit-punch-save-btn"
-              type="submit"
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold shadow-md cursor-pointer transition-colors"
-            >
-              Save Changes
+              Close
             </button>
           </div>
-        </form>
+        ) : (
+          <form onSubmit={saveEdit} className="space-y-4 font-sans">
+            <div className={`p-3 rounded-xl text-xs space-y-1 ${user?.role === 'Supervisor' ? 'bg-emerald-50 text-emerald-800' : 'bg-blue-50 text-blue-800'}`}>
+              <p className="font-semibold block">Employee: {editingEmployee?.employeeName}</p>
+              <p>Target Date: <span className="font-mono font-bold">{selectedDate}</span></p>
+              <p className={`text-[10px] mt-1 ${user?.role === 'Supervisor' ? 'text-emerald-600' : 'text-blue-600'}`}>
+                {user?.role === 'Supervisor'
+                  ? 'Changes will be saved directly to the attendance record.'
+                  : 'This will create a change request pending Supervisor approval.'}
+              </p>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-slate-500">Requested Status</label>
+              <select
+                value={editStatus}
+                onChange={(e) => setEditStatus(e.target.value)}
+                className="w-full border border-slate-200 outline-none rounded-xl px-3 py-2 text-xs text-slate-700 bg-slate-50 focus:bg-white transition-all"
+              >
+                <option value="Present">Present</option>
+                <option value="Absent">Absent</option>
+                <option value="Leave">Leave</option>
+                <option value="Holiday">Holiday</option>
+                <option value="Week Off">Week Off</option>
+                <option value="Comp Off">Comp Off</option>
+              </select>
+            </div>
+
+            {editStatus === 'Present' && (
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-550">Punch Check-In</label>
+                  <input
+                    type="time"
+                    value={editCheckIn}
+                    onChange={(e) => setEditCheckIn(e.target.value)}
+                    className="w-full border border-slate-200 outline-none rounded-xl px-3 py-2 text-xs text-slate-700 bg-slate-50 focus:bg-white transition-all font-mono"
+                    required
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-550">Punch Check-Out</label>
+                  <input
+                    type="time"
+                    value={editCheckOut}
+                    onChange={(e) => setEditCheckOut(e.target.value)}
+                    className="w-full border border-slate-200 outline-none rounded-xl px-3 py-2 text-xs text-slate-700 bg-slate-50 focus:bg-white transition-all font-mono"
+                    required
+                  />
+                </div>
+              </div>
+            )}
+
+            {user?.role !== 'Supervisor' && (
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-500">Reason <span className="text-slate-400 font-normal">(required)</span></label>
+                <textarea
+                  value={editReason}
+                  onChange={(e) => setEditReason(e.target.value)}
+                  placeholder="e.g. Forgot to punch out, shift overrun..."
+                  rows={2}
+                  required
+                  className="w-full border border-slate-200 outline-none rounded-xl px-3 py-2 text-xs text-slate-700 bg-slate-50 focus:bg-white transition-all resize-none"
+                />
+              </div>
+            )}
+
+            <div className="flex justify-end gap-3 pt-3 border-t border-slate-100">
+              <button
+                onClick={() => setEditModalOpen(false)}
+                type="button"
+                className="px-4 py-2 border border-slate-200 text-slate-600 rounded-xl text-xs font-medium cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                id="submit-punch-save-btn"
+                type="submit"
+                className={`px-4 py-2 text-white rounded-xl text-xs font-bold shadow-md cursor-pointer transition-colors ${
+                  user?.role === 'Supervisor'
+                    ? 'bg-emerald-600 hover:bg-emerald-500'
+                    : 'bg-blue-600 hover:bg-blue-500'
+                }`}
+              >
+                {user?.role === 'Supervisor' ? 'Save Attendance' : 'Submit Request'}
+              </button>
+            </div>
+          </form>
+        )}
       </Modal>
 
-      <MonthlyAttendanceReportPrint data={monthlyReport} />
     </div>
   );
 }

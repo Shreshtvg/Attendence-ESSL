@@ -12,9 +12,12 @@ export const attendanceChangeController = {
 
   createChange(req, res) {
     try {
-      const { employee_id, attendance_date, requested_check_in, requested_check_out } = req.body;
-      if (!employee_id || !attendance_date || !requested_check_in || !requested_check_out) {
-        return res.status(400).json({ success: false, message: 'employee_id, attendance_date, requested_check_in, and requested_check_out are required' });
+      const { employee_id, attendance_date, requested_status, requested_check_in, requested_check_out } = req.body;
+      if (!employee_id || !attendance_date || !requested_status) {
+        return res.status(400).json({ success: false, message: 'employee_id, attendance_date, and requested_status are required' });
+      }
+      if (requested_status === 'Present' && (!requested_check_in || !requested_check_out)) {
+        return res.status(400).json({ success: false, message: 'Check-in and check-out times are required when marking Present' });
       }
       const data = attendanceChangeService.createChange(req.body, req.user.id);
       return res.status(201).json({ success: true, data });

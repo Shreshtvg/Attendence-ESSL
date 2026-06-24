@@ -2,10 +2,17 @@ import { useState, useEffect } from 'react';
 import { Plus, Trash2, HelpCircle, Search, CalendarDays } from 'lucide-react';
 import apiClient from '../api/client';
 import Modal from '../components/Modal';
+import ConfirmDialog from '../components/ConfirmDialog';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../contexts/ToastContext';
 
 export default function Holidays() {
   const { user } = useAuth();
+  const toast = useToast();
+  const [confirmDialog, setConfirmDialog] = useState({ open: false, title: '', message: '', onConfirm: null });
+  const openConfirm = (title, message, onConfirm) => setConfirmDialog({ open: true, title, message, onConfirm });
+  const closeConfirm = () => setConfirmDialog(s => ({ ...s, open: false }));
+
   const [holidays, setHolidays] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -58,20 +65,23 @@ export default function Holidays() {
         loadHolidays();
       }
     } catch (err) {
-      alert(err.message || 'Operation failed');
+      toast.error(err.message || 'Operation failed');
     }
   };
 
-  const handleDelete = async (id) => {
-    if (!window.confirm('Are you sure you want to delete this company holiday? This recalculates attendance statuses.')) return;
-    try {
-      const res = await apiClient.delete(`/holidays/${id}`);
-      if (res.success) {
-        loadHolidays();
+  const handleDelete = (id) => {
+    openConfirm(
+      'Delete Company Holiday',
+      'Removing this holiday may recalculate attendance statuses. This action cannot be undone.',
+      async () => {
+        try {
+          const res = await apiClient.delete(`/holidays/${id}`);
+          if (res.success) loadHolidays();
+        } catch (err) {
+          toast.error(err.message || 'Failed to delete');
+        }
       }
-    } catch (err) {
-      alert(err.message || 'Failed to delete');
-    }
+    );
   };
 
   // Convert "2026-05-01" to "01 May 2026 (Friday)"
@@ -297,6 +307,14 @@ export default function Holidays() {
           </div>
         </form>
       </Modal>
+
+      <ConfirmDialog
+        isOpen={confirmDialog.open}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        onConfirm={() => { confirmDialog.onConfirm?.(); closeConfirm(); }}
+        onCancel={closeConfirm}
+      />
     </div>
   );
 }

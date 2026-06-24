@@ -86,6 +86,7 @@ db.exec(`
     attendance_date TEXT NOT NULL,
     requested_check_in TEXT,
     requested_check_out TEXT,
+    requested_status TEXT DEFAULT 'Present',
     reason TEXT,
     status TEXT NOT NULL DEFAULT 'Pending' CHECK(status IN ('Pending', 'Approved', 'Rejected')),
     approved_by INTEGER,
@@ -143,6 +144,11 @@ db.exec(`
     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE SET NULL
   );
 `);
+
+// Migration: add requested_status column to existing databases
+try {
+  db.exec(`ALTER TABLE attendance_changes ADD COLUMN requested_status TEXT DEFAULT 'Present'`);
+} catch (_) { /* column already exists */ }
 
 console.log('SQLite database initialized successfully with foreign keys enabled.');
 

@@ -33,6 +33,7 @@ router.use(authenticateToken);
 
 // Dashboard
 router.get('/dashboard/stats', dashboardController.getStats);
+router.get('/notifications', dashboardController.getNotifications);
 
 // Activity Logs
 router.get('/activity-logs', activityLogController.getLogs);
@@ -79,14 +80,14 @@ router.delete('/leaves/:id', authorizeRoles('Admin'), leaveController.deleteLeav
 // Attendance Change (Punch Corrections) Workflow
 router.get('/changes', attendanceChangeController.getChanges);
 router.post('/changes', attendanceChangeController.createChange);
-router.patch('/changes/:id', authorizeRoles('Admin'), attendanceChangeController.approveChange);
-router.delete('/changes/:id', authorizeRoles('Admin'), attendanceChangeController.deleteChange);
+router.patch('/changes/:id', authorizeRoles('Supervisor'), attendanceChangeController.approveChange);
+router.delete('/changes/:id', authorizeRoles('Supervisor'), attendanceChangeController.deleteChange);
 
 // Aliases for /attendance-changes to support frontend calls
 router.get('/attendance-changes', attendanceChangeController.getChanges);
 router.post('/attendance-changes', attendanceChangeController.createChange);
-router.patch('/attendance-changes/:id', authorizeRoles('Admin'), attendanceChangeController.approveChange);
-router.delete('/attendance-changes/:id', authorizeRoles('Admin'), attendanceChangeController.deleteChange);
+router.patch('/attendance-changes/:id', authorizeRoles('Supervisor'), attendanceChangeController.approveChange);
+router.delete('/attendance-changes/:id', authorizeRoles('Supervisor'), attendanceChangeController.deleteChange);
 
 // Roster Shift Plannings
 router.get('/rosters', rosterController.getRoster);

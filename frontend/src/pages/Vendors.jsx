@@ -3,9 +3,11 @@ import { Plus, Trash2, Edit2, HelpCircle, Handshake, Phone, Mail, User, Search, 
 import apiClient from '../api/client';
 import Modal from '../components/Modal';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../contexts/ToastContext';
 
 export default function Vendors() {
   const { user } = useAuth();
+  const toast = useToast();
   const [vendors, setVendors] = useState([]);
   const [departments, setDepartments] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -104,7 +106,7 @@ export default function Vendors() {
         loadVendors();
       }
     } catch (err) {
-      alert(err.message || 'Operation failed');
+      toast.error(err.message || 'Operation failed');
     }
   };
 
@@ -121,7 +123,7 @@ export default function Vendors() {
         loadVendors();
       }
     } catch (err) {
-      alert(err.message || 'Failed to remove vendor');
+      toast.error(err.message || 'Failed to remove vendor');
     }
   };
 

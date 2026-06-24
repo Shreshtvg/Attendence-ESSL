@@ -1,5 +1,5 @@
 import jwt from 'jsonwebtoken';
-import { JWT_SECRET } from '../config/jwt.js';
+import { JWT_SECRET, JWT_EXPIRES_IN } from '../config/jwt.js';
 
 export function authenticateToken(req, res, next) {
   const authHeader = req.headers['authorization'];
@@ -14,6 +14,12 @@ export function authenticateToken(req, res, next) {
       return res.status(403).json({ success: false, message: 'Token is invalid or expired' });
     }
     req.user = user;
+
+    // Sliding session: refresh the token on every active request
+    const { iat, exp, ...payload } = user;
+    const refreshed = jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
+    res.setHeader('X-Refreshed-Token', refreshed);
+
     next();
   });
 }

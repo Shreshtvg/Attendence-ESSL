@@ -34,9 +34,9 @@ export function AuthProvider({ children }) {
     }
     setLoading(false);
 
-    // Event listener for interceptor logouts
+    // Event listener for interceptor logouts (401/403)
     const handleLogout = () => {
-      setUser(null);
+      clearSession();
     };
 
     window.addEventListener('auth-logout', handleLogout);

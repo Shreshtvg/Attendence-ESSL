@@ -3,9 +3,11 @@ import { Plus, Edit2, Trash2, HelpCircle, ArrowUpDown } from 'lucide-react';
 import apiClient from '../api/client';
 import Modal from '../components/Modal';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../contexts/ToastContext';
 
 export default function Departments() {
   const { user } = useAuth();
+  const toast = useToast();
   const [departments, setDepartments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -84,7 +86,7 @@ export default function Departments() {
         loadDepartments();
       }
     } catch (err) {
-      alert(err.message || 'Operation failed');
+      toast.error(err.message || 'Operation failed');
     }
   };
 
@@ -101,7 +103,7 @@ export default function Departments() {
         loadDepartments();
       }
     } catch (err) {
-      alert(err.message || 'Delete operation failed');
+      toast.error(err.message || 'Delete operation failed');
     }
   };
 

@@ -3,9 +3,11 @@ import { Plus, Edit2, Trash2, HelpCircle, Search, Mail, Phone, MapPin } from 'lu
 import apiClient from '../api/client';
 import Modal from '../components/Modal';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../contexts/ToastContext';
 
 export default function Employees() {
   const { user } = useAuth();
+  const toast = useToast();
   const [dbEmployees, setDbEmployees] = useState([]);
   const [departments, setDepartments] = useState([]);
   const [designations, setDesignations] = useState([]);
@@ -144,7 +146,7 @@ export default function Employees() {
         await loadAncillaryAndEmployees();
       }
     } catch (err) {
-      alert(err.message || 'Operation failed');
+      toast.error(err.message || 'Operation failed');
     }
   };
 
@@ -161,7 +163,7 @@ export default function Employees() {
         await loadAncillaryAndEmployees();
       }
     } catch (err) {
-      alert(err.message || 'Delete failed');
+      toast.error(err.message || 'Delete failed');
     }
   };
 
@@ -296,7 +298,7 @@ export default function Employees() {
   const handleMarkSelectedAsInactive = async () => {
     const selectedIds = Object.keys(selectedInactive).filter(id => selectedInactive[id]);
     if (selectedIds.length === 0) {
-      alert("Please select at least one employee to update!");
+      toast.info('Please select at least one employee to update.');
       return;
     }
     try {
@@ -309,7 +311,7 @@ export default function Employees() {
       setSelectedInactive({});
       await loadAncillaryAndEmployees();
     } catch (err) {
-      alert(err.message || 'Failed to update employee status');
+      toast.error(err.message || 'Failed to update employee status');
     }
   };
 

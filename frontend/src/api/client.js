@@ -21,13 +21,18 @@ apiClient.interceptors.request.use(
   }
 );
 
-// Response interceptor to catch unauthorized errors
+// Response interceptor to catch unauthorized errors and capture sliding-session token
 apiClient.interceptors.response.use(
   (response) => {
+    const refreshed = response.headers['x-refreshed-token'];
+    if (refreshed) {
+      localStorage.setItem('attendix_token', refreshed);
+    }
     return response.data; // Strips boilerplate to returned payload directly
   },
   (error) => {
-    if (error.response && error.response.status === 401) {
+    const status = error.response?.status;
+    if (status === 401 || status === 403) {
       localStorage.removeItem('attendix_token');
       localStorage.removeItem('attendix_user');
       window.dispatchEvent(new Event('auth-logout'));

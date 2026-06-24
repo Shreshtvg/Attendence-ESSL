@@ -2,9 +2,13 @@ import { useState, useEffect } from 'react';
 import { ChevronDown, ChevronUp, Download, Save, Check, X } from 'lucide-react';
 import apiClient from '../api/client';
 import { useAuth } from '../contexts/AuthContext';
+import { useNotifications } from '../contexts/NotificationsContext';
+import { useToast } from '../contexts/ToastContext';
 
 export default function Roster() {
   const { user } = useAuth();
+  const { refresh: refreshNotifications } = useNotifications();
+  const toast = useToast();
   const [rosters, setRosters] = useState([]);
   const [employees, setEmployees] = useState([]);
   const [departments, setDepartments] = useState([]);
@@ -143,21 +147,26 @@ export default function Roster() {
       }
       setGridChanges({});
       await loadAll();
-      alert('Changes submitted for supervisor approval!');
+      toast.success('Changes submitted for supervisor approval!');
     } catch (err) {
       console.error('Submit error:', err);
-      alert(err.message || 'Failed to submit — make sure the server is restarted after latest changes');
+      toast.error(err.message || 'Failed to submit roster change request');
     } finally {
       setSaving(false);
     }
   };
 
   const handleReview = async (id, status) => {
+    const req = rosterRequests.find(r => r.id === id);
+    if (req && req.status !== 'Pending') {
+      toast.info(`This request is already ${req.status} and cannot be changed.`);
+      return;
+    }
     try {
       const res = await apiClient.patch(`/roster-changes/${id}`, { status });
-      if (res.success) await loadAll();
+      if (res.success) { await loadAll(); refreshNotifications(); }
     } catch (err) {
-      alert(err.message || 'Review failed');
+      toast.error(err.message || 'Review failed');
     }
   };
 
@@ -364,13 +373,13 @@ export default function Roster() {
         <div className="flex flex-col sm:flex-row gap-3 justify-between items-stretch sm:items-center pt-2 border-t border-slate-100">
           <div className="flex items-center gap-2.5">
             <button
-              onClick={() => alert(`Exporting ${selectedDept} roster to Excel...`)}
+              onClick={() => toast.info(`Exporting ${selectedDept} roster to Excel...`)}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#e2f5ec] text-[#2c9a63] hover:bg-[#d0eedf] text-xs font-bold rounded-lg cursor-pointer transition-colors border border-[#a2e3c2]"
             >
               <Download className="h-3.5 w-3.5" /><span>Excel</span>
             </button>
             <button
-              onClick={() => alert(`Exporting ${selectedDept} roster to PDF...`)}
+              onClick={() => toast.info(`Exporting ${selectedDept} roster to PDF...`)}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#fdeded] text-[#cb3131] hover:bg-[#fbd3d3] text-xs font-bold rounded-lg cursor-pointer transition-colors border border-[#f5abab]"
             >
               <Download className="h-3.5 w-3.5" /><span>PDF</span>

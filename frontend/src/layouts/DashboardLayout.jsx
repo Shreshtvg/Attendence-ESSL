@@ -1,4 +1,5 @@
 import { useAuth } from '../contexts/AuthContext';
+import { useNotifications } from '../contexts/NotificationsContext';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import {
   Home, Clock, Building2, Users, Briefcase, CalendarClock,
@@ -9,25 +10,31 @@ import { useState, useEffect } from 'react';
 
 export default function DashboardLayout({ children }) {
   const { user, logout } = useAuth();
+  const { leaves, attendanceChanges, rosterChanges, refresh } = useNotifications();
   const navigate = useNavigate();
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [desktopCollapsed, setDesktopCollapsed] = useState(false);
 
-  useEffect(() => { setMobileOpen(false); }, [location.pathname]);
+  useEffect(() => {
+    setMobileOpen(false);
+    // Refresh counts whenever user lands on a page that shows pending items
+    const watchedPaths = ['/leaves', '/changes', '/roster'];
+    if (watchedPaths.includes(location.pathname)) refresh();
+  }, [location.pathname]);
 
   const menuItems = [
-    { label: 'Home',        path: '/',            icon: Home         },
-    { label: 'Attendance',  path: '/attendance',  icon: Clock        },
-    { label: 'Departments', path: '/departments', icon: Building2    },
-    { label: 'Employees',   path: '/employees',   icon: Users        },
-    { label: 'Designations',path: '/designations',icon: Briefcase    },
-    { label: 'Shifts',      path: '/shifts',      icon: CalendarClock},
-    { label: 'Roster',      path: '/roster',      icon: Calendar     },
-    { label: 'Leaves',      path: '/leaves',      icon: Plane        },
-    { label: 'Att. Changes',path: '/changes',     icon: CheckSquare  },
-    { label: 'Holidays',    path: '/holidays',    icon: Umbrella     },
-    { label: 'Vendors',     path: '/vendors',     icon: Handshake    },
+    { label: 'Home',        path: '/',            icon: Home,          badge: 0               },
+    { label: 'Attendance',  path: '/attendance',  icon: Clock,         badge: 0               },
+    { label: 'Departments', path: '/departments', icon: Building2,     badge: 0               },
+    { label: 'Employees',   path: '/employees',   icon: Users,         badge: 0               },
+    { label: 'Designations',path: '/designations',icon: Briefcase,     badge: 0               },
+    { label: 'Shifts',      path: '/shifts',      icon: CalendarClock, badge: 0               },
+    { label: 'Roster',      path: '/roster',      icon: Calendar,      badge: rosterChanges   },
+    { label: 'Leaves',      path: '/leaves',      icon: Plane,         badge: leaves          },
+    { label: 'Att. Changes',path: '/changes',     icon: CheckSquare,   badge: attendanceChanges},
+    { label: 'Holidays',    path: '/holidays',    icon: Umbrella,      badge: 0               },
+    { label: 'Vendors',     path: '/vendors',     icon: Handshake,     badge: 0               },
   ];
 
   const isAdmin = user?.role === 'Admin';
@@ -38,19 +45,31 @@ export default function DashboardLayout({ children }) {
       {!collapsed && (
         <p className="px-2 text-[9px] font-bold text-slate-500 uppercase tracking-wider mb-1">Attendance</p>
       )}
-      {menuItems.map(({ label, path, icon: Icon }) => {
+      {menuItems.map(({ label, path, icon: Icon, badge }) => {
         const active = location.pathname === path;
         return (
           <Link
             key={path}
             to={path}
-            title={collapsed ? label : undefined}
+            title={collapsed ? (badge > 0 ? `${label} (${badge} pending)` : label) : undefined}
             className={`flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
               active ? 'bg-white text-[#1e40af] shadow-xs' : 'text-slate-700 hover:bg-white/40'
             } ${collapsed ? 'justify-center' : ''}`}
           >
-            <Icon className={`h-4 w-4 shrink-0 ${active ? 'text-[#1e40af]' : 'text-slate-500'}`} />
-            {!collapsed && <span>{label}</span>}
+            <span className="relative shrink-0">
+              <Icon className={`h-4 w-4 ${active ? 'text-[#1e40af]' : 'text-slate-500'}`} />
+              {badge > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 min-w-[14px] h-[14px] px-0.5 bg-rose-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center leading-none">
+                  {badge > 99 ? '99+' : badge}
+                </span>
+              )}
+            </span>
+            {!collapsed && <span className="flex-1">{label}</span>}
+            {!collapsed && badge > 0 && (
+              <span className="ml-auto min-w-[18px] h-[18px] px-1 bg-rose-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center leading-none">
+                {badge > 99 ? '99+' : badge}
+              </span>
+            )}
           </Link>
         );
       })}

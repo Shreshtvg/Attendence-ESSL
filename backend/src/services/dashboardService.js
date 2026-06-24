@@ -142,5 +142,12 @@ export const dashboardService = {
       trend: trendData,
       recentActivity: logs
     };
+  },
+
+  getPendingCounts() {
+    const leaves = db.prepare("SELECT COUNT(*) as count FROM leave_requests WHERE status = 'Pending'").get().count;
+    const attendanceChanges = db.prepare("SELECT COUNT(*) as count FROM attendance_changes WHERE status = 'Pending'").get().count;
+    const rosterChanges = db.prepare("SELECT COUNT(*) as count FROM roster_change_requests WHERE status = 'Pending'").get().count;
+    return { leaves, attendanceChanges, rosterChanges };
   }
 };
